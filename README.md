@@ -1,5 +1,5 @@
 - 👋 Hi, I’m @blessdog (Ryan Anselman)
-- 👀 I’m interested in data scinece, embeded systems, .
+- 👀 I’m interested in data scinece, recomendation algorithms,  and embeded systems.
 - 🌱 I’m currently learning to build plugins for Ableton music production software.
 - 💞️ I’m looking to collaborate on music recomendation apps utilizing Spotify's API. 
 - 📫 How to reach me ... rfanselman@gmail.com
