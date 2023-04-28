@@ -1,4 +1,4 @@
-- 👋 Hi, I’m @blessdog (Ryan Anselman)
+- 👋 Hi, I’m Ryan Anselman
 - 👀 I’m interested in data scinece, recomendation algorithms,  and embedded systems.
 - 🌱 I’m currently learning about game theroy incentive mechanisms for auctions and blockchain protocols.
 - 💞️ I’m looking to collaborate on music recomendation apps utilizing Spotify's API. 
