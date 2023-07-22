@@ -1,10 +1,10 @@
-- 👋 Hi, I’m Ryan Anselman
-- 👀 I’m interested in data scinece, recomendation algorithms,  and embedded systems.
-- 🌱 I’m currently learning about game theroy incentive mechanisms for auctions and blockchain protocols.
-- 💞️ I’m looking to collaborate on music recomendation apps utilizing Spotify's API. 
-- 📫 How to reach me ... rfanselman@gmail.com
-
+<div id="header" align="center">
+  <img src="https://media.giphy.com/media/hrlg3PhRwIrII/giphy.gif" width="100"/>
+</div>
 <!---
 blessdog/blessdog is a ✨ special ✨ repository because its `README.md` (this file) appears on your GitHub profile.
 You can click the Preview link to take a look at your changes.
+<div id="header" align="center">
+  <img src="https://media.giphy.com/media/sJvz8Qnfly3BOuotGx/giphy.gif" width="100"/>
+</div>
 --->
