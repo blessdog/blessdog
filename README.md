@@ -1,5 +1,5 @@
 <div id="header" align="center">
-  <img />
+  <img /Users/SSDrive/Docs/Projects/blessdog/github_portfolio_cover_matrix.jpg/>
   <div id="badges">
     <a href="https://www.linkedin.com/in/ryan-anselman/">
       <img src="https://img.shields.io/badge/LinkedIn-blue?style=for-the-badge&logo=linkedin&logoColor=white"     alt="LinkedIn Badge"/>
