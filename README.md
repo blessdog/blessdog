@@ -1,8 +1,8 @@
 <div id="header" align="center">
-  <img /Users/SSDrive/Docs/Projects/blessdog/github_portfolio_cover_matrix.jpg/>
+  <img src="images/github_portfolio_cover_matrix.jpg" alt="Cover Image"/>
   <div id="badges">
     <a href="https://www.linkedin.com/in/ryan-anselman/">
-      <img src="https://img.shields.io/badge/LinkedIn-blue?style=for-the-badge&logo=linkedin&logoColor=white"     alt="LinkedIn Badge"/>
+      <img src="https://img.shields.io/badge/LinkedIn-blue?style=for-the-badge&logo=linkedin&logoColor=white" alt="LinkedIn Badge"/>
     </a>
   </div>
   <img src="https://komarev.com/ghpvc/?username=blessdog&style=flat-square&color=blue" alt=""/>
@@ -10,8 +10,9 @@
     Hi
     <img src="https://media.giphy.com/media/hvRJCLFzcasrR4ia7z/giphy.gif" width="30px" height="30px"/>
     my name is Ryan
-</h1>
+  </h1>
 </div>
+
 
 [![Typing SVG](https://readme-typing-svg.demolab.com/?lines=Continuously+learning;Continuously+problem+solving)](https://git.io/typing-svg)
 
