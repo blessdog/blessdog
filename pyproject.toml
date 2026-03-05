@@ -1,0 +1,30 @@
+[build-system]
+requires = ["setuptools>=64.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "blessdog"
+version = "0.1.0"
+description = "AI music production system — Ableton Live OSC bridge"
+requires-python = ">=3.10"
+dependencies = [
+    "python-osc>=1.9.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+    "pytest-timeout>=2.0",
+]
+
+[project.scripts]
+blessdog = "phase1_osc.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["phase1_osc*"]
+
+[tool.pytest.ini_options]
+markers = [
+    "integration: requires live Ableton connection",
+]
+testpaths = ["tests"]
