@@ -1,6 +1,6 @@
 ## Hey, I'm Ryan
 
-AI product builder based in Denver, CO. MS in Computer Science from CU Boulder. I build autonomous AI systems that do real work.
+AI product builder based in Denver, CO. I build autonomous AI systems that do real work.
 
 ### What I'm Building
 
