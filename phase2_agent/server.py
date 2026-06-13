@@ -30,6 +30,13 @@ from phase4_architect.builder import SessionBuilder
 
 from phase6_compose import MusicalContext, build_part, lint, ROLES
 
+from phase7_sound import (
+    apply_move,
+    apply_undo,
+    available_moves,
+    match_parameters,
+)
+
 # ---------------------------------------------------------------------------
 # Context
 # ---------------------------------------------------------------------------
@@ -83,6 +90,17 @@ stiff, flat results — only use it for surgical one-off edits.
   {"swing": 0.15}).
 - Use `preview=True` to see notes + a lint report before writing; iterate, then
   write. Use `verify_clip` to check what's actually in a clip.
+
+## Shaping sound — describe the vibe, don't hunt for dials
+- `inspect_device(track)` shows a track's devices, parameters (with ranges +
+  current values), and which ones are shapeable (filter_cutoff, reverb_wet, …).
+- `shape_sound(track, intent, amount)` adjusts the sound by intent: brighter,
+  darker, warmer, dreamier, drier, wider, more_drive, softer, punchier, louder,
+  quieter. These are adjustable starting points — audition, then `undo_sound(track)`
+  to revert or `shape_sound` again to push further.
+- `set_parameter(track, device, parameter, value)` sets one knob precisely (by
+  name or index), normalized 0..1 by default, with read-back confirmation.
+- `load_preset(track, "warm analog bass")` loads a sound by description.
 
 ## Common Workflows
 1. **Explore**: get_session → see tracks, scenes, tempo.
@@ -549,6 +567,197 @@ def verify_clip(
         ctx = MusicalContext(key=key, mode=mode)
         result["lint"] = lint(notes, ctx, length + 1.0, check_key=True)
     return json.dumps(result)
+
+
+# ---------------------------------------------------------------------------
+# Sound shaping (Phase 7) — intent-driven, reliable parameter control
+# ---------------------------------------------------------------------------
+
+# Per-track snapshot of the last shape_sound, so undo_sound can revert precisely.
+_last_move_snapshot: dict[int, list[dict]] = {}
+
+
+@mcp.tool()
+@_handle_errors
+def inspect_device(track_index: int, device_index: int | None = None) -> str:
+    """Show a track's devices and their parameters — with ranges, current
+    display values, normalized positions, and matched semantic roles.
+
+    The "what can I turn here" tool. `role` (e.g. filter_cutoff, reverb_wet) is
+    set on parameters that shape_sound can target; unmatched params are still
+    listed for manual control via set_parameter.
+    """
+    info = bridge.discovery.get_track_with_devices(track_index)
+    devices = info.devices
+    if device_index is not None:
+        devices = [d for d in devices if d.device_index == device_index]
+
+    matches = match_parameters(track_index, devices)
+    role_at = {(m.device_index, m.param_index): m.role for m in matches}
+
+    out = []
+    for d in devices:
+        params = [
+            {
+                "index": p.index,
+                "name": p.name,
+                "value": round(p.value, 4),
+                "normalized": round(bridge.devices.raw_to_normalized(p, p.value), 3),
+                "min": p.min_value,
+                "max": p.max_value,
+                "quantized": p.is_quantized,
+                "role": role_at.get((d.device_index, p.index)),
+            }
+            for p in d.parameters
+        ]
+        out.append({
+            "device_index": d.device_index,
+            "name": d.name,
+            "class_name": d.class_name,
+            "parameters": params,
+        })
+
+    return json.dumps({
+        "track_index": track_index,
+        "devices": out,
+        "shapeable_roles": sorted({m.role for m in matches}),
+    })
+
+
+@mcp.tool()
+@_handle_errors
+def set_parameter(
+    track_index: int,
+    device_index: int,
+    parameter: str,
+    value: float,
+    normalized: bool = True,
+) -> str:
+    """Set a device parameter safely, by name or index, with read-back verify.
+
+    - parameter: the parameter name (e.g. "Frequency") or its numeric index.
+    - value: by default a normalized 0.0-1.0 amount (mapped to the parameter's
+      real range; quantized params snap to valid steps). Set normalized=False to
+      pass a raw value.
+    Returns the requested vs actual value to confirm it landed.
+    """
+    params = bridge.devices.get_parameters(track_index, device_index)
+    key = str(parameter).strip()
+    if key.isdigit():
+        info = next((p for p in params if p.index == int(key)), None)
+    else:
+        info = next((p for p in params if p.name.lower() == key.lower()), None)
+    if info is None:
+        return json.dumps({
+            "error": "NotFound",
+            "message": f"no parameter {parameter!r} on track {track_index} device {device_index}",
+            "available": [p.name for p in params],
+        })
+
+    raw = bridge.devices.normalize_to_raw(info, value) if normalized else value
+    verify = bridge.devices.set_parameter_verified(
+        track_index, device_index, info.index, raw)
+    return json.dumps({
+        "track_index": track_index,
+        "device_index": device_index,
+        "parameter": info.name,
+        **verify,
+    })
+
+
+@mcp.tool()
+@_handle_errors
+def shape_sound(track_index: int, intent: str, amount: str = "medium") -> str:
+    """Shape a track's sound by intent instead of twiddling individual knobs.
+
+    Applies a relative, reversible nudge across the track's matched parameters.
+    intent: brighter, darker, warmer, dreamier, drier, wider, more_drive,
+    softer, punchier, louder, quieter (+ aliases like "aggressive", "spacious").
+    amount: subtle | medium | strong.
+
+    These are adjustable STARTING POINTS, not exact one-shots — audition the
+    result and call undo_sound to revert, or apply again to push further.
+    Returns exactly what changed.
+    """
+    info = bridge.discovery.get_track_with_devices(track_index)
+    matches = match_parameters(track_index, info.devices)
+    try:
+        result = apply_move(bridge.devices, intent, matches, amount=amount)
+    except ValueError as e:
+        return json.dumps({"error": "ValueError", "message": str(e),
+                           "available": available_moves()})
+
+    _last_move_snapshot[track_index] = result["undo"]
+    resp = {
+        "track_index": track_index,
+        "intent": result["intent"],
+        "amount": result["amount"],
+        "changed": result["changed"],
+        "changes": result["changes"],
+        "undo_available": result["changed"] > 0,
+    }
+    if result["changed"] == 0:
+        resp["note"] = ("no matching parameters on this track's devices for that "
+                        "intent — try inspect_device to see what's available")
+    return json.dumps(resp)
+
+
+@mcp.tool()
+@_handle_errors
+def undo_sound(track_index: int) -> str:
+    """Revert the last shape_sound on a track, restoring the exact prior values.
+
+    Falls back to Ableton's global undo if there's no recorded snapshot.
+    """
+    snapshot = _last_move_snapshot.get(track_index)
+    if not snapshot:
+        bridge.transport.undo()
+        return json.dumps({
+            "track_index": track_index,
+            "restored": 0,
+            "source": "ableton_undo",
+            "note": "no recorded shape_sound snapshot; used Ableton undo",
+        })
+    result = apply_undo(bridge.devices, snapshot)
+    _last_move_snapshot.pop(track_index, None)
+    return json.dumps({"track_index": track_index, "source": "snapshot", **result})
+
+
+@mcp.tool()
+@_handle_errors
+def load_preset(track_index: int, descriptor: str, kind: str = "instrument") -> str:
+    """Load a sound onto a track by describing it (e.g. "warm analog bass",
+    "lush pad", "punchy kick").
+
+    Searches the indexed library for matching presets (suggestions) and loads
+    the best match into Ableton via the browser. kind: instrument | audio_effect
+    | drums | sample.
+    """
+    category = {
+        "instrument": None,
+        "audio_effect": "audio_effects",
+        "drums": "drums",
+        "sample": "samples",
+    }.get(kind)
+
+    suggestions: list[str] = []
+    try:
+        lib = _get_library()
+        suggestions = [r["name"] for r in lib.search(descriptor, limit=5)]
+    except Exception:
+        pass
+
+    loader = Loader(bridge.view, bridge.browser)
+    result = loader.load_device(track_index, descriptor, category=category)
+    return json.dumps({
+        "loaded": result.success,
+        "track_index": track_index,
+        "query": descriptor,
+        "matched": result.device_name if result.success else None,
+        "source": result.source if result.success else None,
+        "error": None if result.success else result.error,
+        "library_suggestions": suggestions,
+    })
 
 
 # ---------------------------------------------------------------------------
