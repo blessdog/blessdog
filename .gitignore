@@ -27,3 +27,6 @@ venv/
 .pytest_cache/
 .coverage
 htmlcov/
+
+# Reference audio + stems (large, regenerable via download_reference/analyze)
+music/

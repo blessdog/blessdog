@@ -15,8 +15,10 @@ class Scenes:
         return int(result[0])
 
     def get_names(self) -> list[str]:
-        result = self._conn.query("/live/song/get/scene_names")
-        return [str(n) for n in result]
+        """Return scene names. AbletonOSC has no bulk scene-name endpoint,
+        so we generate numbered names from the scene count."""
+        num = self.count()
+        return [f"Scene {i + 1}" for i in range(num)]
 
     def fire(self, index: int) -> None:
         self._validate_index(index)

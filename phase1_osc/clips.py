@@ -26,6 +26,9 @@ class Clips:
             length=float(length[-1]),
         )
 
+    def set_name(self, track: int, clip: int, name: str) -> None:
+        self._conn.send("/live/clip/set/name", track, clip, name)
+
     def create(self, track: int, clip: int, length: float = 4.0) -> None:
         self._conn.send("/live/clip_slot/create_clip", track, clip, length)
 

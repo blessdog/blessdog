@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "blessdog": {
+      "type": "stdio",
+      "command": ".venv/bin/python",
+      "args": ["-m", "phase2_agent.server"]
+    },
+    "ableton-mcp": {
+      "command": ".venv/bin/python",
+      "args": ["/Users/SSDrive/projects/ableton-mcp-extended/MCP_Server/server.py"]
+    }
+  }
+}

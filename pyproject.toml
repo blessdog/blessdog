@@ -4,14 +4,21 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "blessdog"
-version = "0.1.0"
+version = "0.4.0"
 description = "AI music production system — Ableton Live OSC bridge"
 requires-python = ">=3.10"
 dependencies = [
     "python-osc>=1.9.0",
+    "mcp>=1.0.0",
+    "msgpack>=1.0.0",
 ]
 
 [project.optional-dependencies]
+analyzer = [
+    "demucs>=4.0.0",
+    "librosa>=0.10.0",
+    "soundfile>=0.12.0",
+]
 dev = [
     "pytest>=7.0",
     "pytest-timeout>=2.0",
@@ -21,7 +28,7 @@ dev = [
 blessdog = "phase1_osc.cli:main"
 
 [tool.setuptools.packages.find]
-include = ["phase1_osc*"]
+include = ["phase1_osc*", "phase2_agent*", "phase3_library*", "phase4_architect*", "phase5_analyzer*"]
 
 [tool.pytest.ini_options]
 markers = [

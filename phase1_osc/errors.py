@@ -27,3 +27,11 @@ class DeviceNotFound(BlessDogError):
 
 class SceneNotFound(BlessDogError):
     """Referenced scene index does not exist."""
+
+
+class BrowserError(BlessDogError):
+    """Error accessing Ableton's browser."""
+
+
+class LoadError(BlessDogError):
+    """Failed to load a device/sample from the browser."""

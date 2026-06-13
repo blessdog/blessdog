@@ -82,6 +82,15 @@ class Tracks:
     def create_audio_track(self, index: int = -1) -> None:
         self._conn.send("/live/song/create_audio_track", index)
 
+    def set_name(self, index: int, name: str) -> None:
+        self._conn.send("/live/track/set/name", index, name)
+
+    def set_color_index(self, index: int, color: int) -> None:
+        self._conn.send("/live/track/set/color_index", index, color)
+
+    def duplicate(self, index: int) -> None:
+        self._conn.send("/live/song/duplicate_track", index)
+
     def delete(self, index: int) -> None:
         self._conn.send("/live/song/delete_track", index)
 

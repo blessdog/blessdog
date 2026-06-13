@@ -42,6 +42,23 @@ CANNED_RESPONSES: dict[str, tuple] = {
     "/live/track/get/sends": None,
     "/live/track/get/num_devices": None,
     "/live/track/get/device_names": None,
+    # View queries
+    "/live/view/get/selected_track": (0,),
+    "/live/view/get/selected_scene": (0,),
+    "/live/view/get/selected_clip": (0, 0),
+    "/live/view/get/selected_device": (0, 0),
+    # Browser queries
+    "/live/browser/categories": (
+        "instruments", 10, "audio_effects", 8, "midi_effects", 3,
+        "sounds", 50, "drums", 20, "max_for_live", 5,
+        "plugins", 12, "clips", 30, "samples", 100,
+        "packs", 15, "user_library", 25, "user_folders", 4,
+    ),
+    "/live/browser/search": None,
+    "/live/browser/list_children": None,
+    "/live/browser/load_by_name": None,
+    "/live/browser/load_by_uri": None,
+    "/live/browser/load_by_path": None,
     # Device queries
     "/live/device/get/name": None,
     "/live/device/get/class_name": None,
@@ -175,6 +192,54 @@ class MockAbletonOSC:
                         if pi < len(dd["param_values"]):
                             return (*key, pi, str(dd["param_values"][pi]))
             return None
+
+        # View set commands — fire-and-forget with no response
+        if address.startswith("/live/view/set/"):
+            return None
+
+        # Browser queries
+        if address == "/live/browser/search":
+            if len(args) >= 2:
+                query = str(args[1]).lower()
+                # Return a fake match for known names
+                if "wavetable" in query:
+                    return ("Wavetable", "uri:wavetable", 1, 0)
+                elif "operator" in query:
+                    return ("Operator", "uri:operator", 1, 0)
+                elif "reverb" in query:
+                    return ("Reverb", "uri:reverb", 1, 0)
+                elif "delay" in query:
+                    return ("Delay", "uri:delay", 1, 0)
+                elif "auto filter" in query:
+                    return ("Auto Filter", "uri:autofilter", 1, 0)
+                elif "compressor" in query:
+                    return ("Compressor", "uri:compressor", 1, 0)
+                elif "drum rack" in query:
+                    return ("Drum Rack", "uri:drumrack", 1, 0)
+                return ("no_results",)
+            return ("error", "requires: category, query")
+
+        if address == "/live/browser/list_children":
+            if len(args) >= 1:
+                return ("Subfolder", "", 0, 3)
+            return ("error", "requires: category")
+
+        if address == "/live/browser/load_by_name":
+            if len(args) >= 2:
+                name = str(args[1])
+                return ("loaded", name)
+            return ("error", "requires: category, name")
+
+        if address == "/live/browser/load_by_uri":
+            if len(args) >= 1:
+                return ("loaded", "TestDevice")
+            return ("error", "requires: uri")
+
+        if address == "/live/browser/load_by_path":
+            if len(args) >= 2:
+                last_segment = str(args[-1])
+                return ("loaded", last_segment)
+            return ("error", "requires: category, path_segment(s)")
 
         # Fire-and-forget commands — no response
         return None
