@@ -31,9 +31,13 @@ from phase4_architect.builder import SessionBuilder
 from phase6_compose import MusicalContext, build_part, lint, ROLES
 
 from phase7_sound import (
+    apply_macro,
     apply_move,
     apply_undo,
     available_moves,
+    available_macros,
+    design_macros,
+    find_macro,
     match_parameters,
 )
 
@@ -100,6 +104,10 @@ stiff, flat results — only use it for surgical one-off edits.
   to revert or `shape_sound` again to push further.
 - `set_parameter(track, device, parameter, value)` sets one knob precisely (by
   name or index), normalized 0..1 by default, with read-back confirmation.
+- `list_macros(track)` / `set_macro(track, "brightness", 0.8)` — a few "vibe
+  knobs" (brightness, space, energy, warmth) that each sweep many parameters at
+  once. Absolute and repeatable (vs shape_sound's relative nudge); revert with
+  `undo_sound`. This is the "3 knobs not 30" control.
 - `load_preset(track, "warm analog bass")` loads a sound by description.
 
 ## Common Workflows
@@ -757,6 +765,65 @@ def load_preset(track_index: int, descriptor: str, kind: str = "instrument") -> 
         "source": result.source if result.success else None,
         "error": None if result.success else result.error,
         "library_suggestions": suggestions,
+    })
+
+
+@mcp.tool()
+@_handle_errors
+def list_macros(track_index: int) -> str:
+    """List the macro 'vibe knobs' available for a track — a few meaningful
+    controls (brightness, space, energy, warmth) that each move many underlying
+    parameters at once, so you adjust feel instead of individual dials.
+
+    Only macros with matching parameters on this track are returned.
+    """
+    info = bridge.discovery.get_track_with_devices(track_index)
+    matches = match_parameters(track_index, info.devices)
+    macros = design_macros(matches)
+    return json.dumps({
+        "track_index": track_index,
+        "macros": [
+            {
+                "name": m.name,
+                "description": m.description,
+                "drives_roles": sorted({t.role for t in m.targets}),
+            }
+            for m in macros
+        ],
+        "all_known": available_macros(),
+    })
+
+
+@mcp.tool()
+@_handle_errors
+def set_macro(track_index: int, macro: str, value: float) -> str:
+    """Turn a macro 'vibe knob' to an absolute position (0.0-1.0).
+
+    A macro sweeps several role-matched parameters together — e.g.
+    set_macro(track, "brightness", 0.8) opens the filter and lifts the highs.
+    Unlike shape_sound (relative nudges), this is an absolute, repeatable knob.
+    Verified per parameter; revert with undo_sound.
+    """
+    info = bridge.discovery.get_track_with_devices(track_index)
+    matches = match_parameters(track_index, info.devices)
+    m = find_macro(macro, matches)
+    if m is None:
+        return json.dumps({
+            "error": "NotFound",
+            "message": f"macro {macro!r} has no matching parameters on track {track_index}",
+            "available_here": [x.name for x in design_macros(matches)],
+            "all_known": available_macros(),
+        })
+
+    result = apply_macro(bridge.devices, m, matches, value)
+    _last_move_snapshot[track_index] = result["undo"]
+    return json.dumps({
+        "track_index": track_index,
+        "macro": result["macro"],
+        "value": result["value"],
+        "changed": result["changed"],
+        "changes": result["changes"],
+        "undo_available": result["changed"] > 0,
     })
 
 

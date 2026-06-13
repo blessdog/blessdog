@@ -13,6 +13,13 @@ one-shots.
 
 from __future__ import annotations
 
+from .macros import (
+    Macro,
+    apply_macro,
+    available_macros,
+    design_macros,
+    find_macro,
+)
 from .moves import (
     apply_move,
     apply_undo,
@@ -33,4 +40,9 @@ __all__ = [
     "apply_undo",
     "available_moves",
     "resolve_move",
+    "Macro",
+    "design_macros",
+    "find_macro",
+    "apply_macro",
+    "available_macros",
 ]
