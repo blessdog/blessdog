@@ -111,6 +111,8 @@ class MockAbletonOSC:
         self._server: ThreadingOSCUDPServer | None = None
         self._thread: threading.Thread | None = None
         self._client: SimpleUDPClient | None = None
+        # Stateful clip note store: (track, clip) -> [(pitch, start, dur, vel, mute), ...]
+        self._clip_notes: dict[tuple[int, int], list[tuple]] = {}
 
     def start(self) -> None:
         self._client = SimpleUDPClient(self.host, self.response_port)
@@ -240,6 +242,52 @@ class MockAbletonOSC:
                 last_segment = str(args[-1])
                 return ("loaded", last_segment)
             return ("error", "requires: category, path_segment(s)")
+
+        # Clip note write (stateful, fire-and-forget)
+        if address == "/live/clip/add/notes":
+            if len(args) >= 2:
+                track, clip = int(args[0]), int(args[1])
+                store = self._clip_notes.setdefault((track, clip), [])
+                rest = args[2:]
+                for off in range(0, len(rest) - 4, 5):
+                    pitch, start, dur, vel, mute = rest[off:off + 5]
+                    store.append(
+                        (int(pitch), float(start), float(dur), int(vel), int(mute))
+                    )
+            return None
+
+        # Clip note read (range-filtered: pitch_start, pitch_span, time_start, time_span)
+        if address == "/live/clip/get/notes":
+            if len(args) >= 2:
+                track, clip = int(args[0]), int(args[1])
+                notes = list(self._clip_notes.get((track, clip), []))
+                if len(args) >= 6:
+                    p_start, p_span, t_start, t_span = args[2], args[3], args[4], args[5]
+                    ps, pe = int(p_start), int(p_start) + int(p_span)
+                    ts, te = float(t_start), float(t_start) + float(t_span)
+                    notes = [
+                        n for n in notes
+                        if ps <= n[0] < pe and ts <= n[1] < te
+                    ]
+                flat: list = [track, clip]
+                for n in notes:
+                    flat.extend([n[0], n[1], n[2], n[3], n[4]])
+                return tuple(flat)
+            return None
+
+        # Clip note removal (same range params as get)
+        if address == "/live/clip/remove/notes":
+            if len(args) >= 6:
+                track, clip = int(args[0]), int(args[1])
+                p_start, p_span, t_start, t_span = args[2], args[3], args[4], args[5]
+                ps, pe = int(p_start), int(p_start) + int(p_span)
+                ts, te = float(t_start), float(t_start) + float(t_span)
+                kept = [
+                    n for n in self._clip_notes.get((track, clip), [])
+                    if not (ps <= n[0] < pe and ts <= n[1] < te)
+                ]
+                self._clip_notes[(track, clip)] = kept
+            return None
 
         # Fire-and-forget commands — no response
         return None
