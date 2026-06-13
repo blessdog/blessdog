@@ -87,16 +87,28 @@ TRACK_DATA = [
 DEVICE_DATA = {
     (0, 0): {"name": "Simpler", "class_name": "OriginalSimpler",
              "param_names": ["Device On", "Volume", "Attack", "Decay"],
-             "param_values": [1.0, 0.8, 0.01, 0.3]},
+             "param_values": [1.0, 0.8, 0.01, 0.3],
+             "param_min": [0.0, 0.0, 0.0, 0.0],
+             "param_max": [1.0, 1.0, 1.0, 1.0],
+             "param_quant": [1, 0, 0, 0]},
     (0, 1): {"name": "Auto Filter", "class_name": "AutoFilter",
              "param_names": ["Device On", "Frequency", "Resonance"],
-             "param_values": [1.0, 800.0, 0.5]},
+             "param_values": [1.0, 800.0, 0.5],
+             "param_min": [0.0, 20.0, 0.0],
+             "param_max": [1.0, 20000.0, 1.25],
+             "param_quant": [1, 0, 0]},
     (1, 0): {"name": "Drum Rack", "class_name": "DrumGroupDevice",
              "param_names": ["Device On"],
-             "param_values": [1.0]},
+             "param_values": [1.0],
+             "param_min": [0.0],
+             "param_max": [1.0],
+             "param_quant": [1]},
     (2, 0): {"name": "Wavetable", "class_name": "InstrumentVector",
              "param_names": ["Device On", "Osc 1 Shape", "Filter Freq", "Volume"],
-             "param_values": [1.0, 0.5, 0.7, 0.85]},
+             "param_values": [1.0, 0.5, 0.7, 0.85],
+             "param_min": [0.0, 0.0, 20.0, 0.0],
+             "param_max": [1.0, 1.0, 20000.0, 1.0],
+             "param_quant": [1, 0, 0, 0]},
 }
 
 
@@ -113,6 +125,8 @@ class MockAbletonOSC:
         self._client: SimpleUDPClient | None = None
         # Stateful clip note store: (track, clip) -> [(pitch, start, dur, vel, mute), ...]
         self._clip_notes: dict[tuple[int, int], list[tuple]] = {}
+        # Stateful device parameter overrides: (track, device, param) -> value
+        self._param_overrides: dict[tuple[int, int, int], float] = {}
 
     def start(self) -> None:
         self._client = SimpleUDPClient(self.host, self.response_port)
@@ -170,6 +184,13 @@ class MockAbletonOSC:
                         return (track_idx, *td["device_names"])
             return None
 
+        # Device parameter set (stateful, fire-and-forget)
+        if address == "/live/device/set/parameter/value":
+            if len(args) >= 4:
+                track, device, pi, value = int(args[0]), int(args[1]), int(args[2]), float(args[3])
+                self._param_overrides[(track, device, pi)] = value
+            return None
+
         # Device-level queries
         if address.startswith("/live/device/get/"):
             prop = address.split("/live/device/get/")[1]
@@ -177,6 +198,8 @@ class MockAbletonOSC:
                 key = (int(args[0]), int(args[1]))
                 dd = DEVICE_DATA.get(key)
                 if dd:
+                    def cur(pi):
+                        return self._param_overrides.get((key[0], key[1], pi), dd["param_values"][pi])
                     if prop == "name":
                         return (*key, dd["name"])
                     elif prop == "class_name":
@@ -184,15 +207,21 @@ class MockAbletonOSC:
                     elif prop == "parameters/name":
                         return (*key, *dd["param_names"])
                     elif prop == "parameters/value":
-                        return (*key, *dd["param_values"])
+                        return (*key, *[cur(i) for i in range(len(dd["param_values"]))])
+                    elif prop == "parameters/min":
+                        return (*key, *dd.get("param_min", [0.0] * len(dd["param_values"])))
+                    elif prop == "parameters/max":
+                        return (*key, *dd.get("param_max", [1.0] * len(dd["param_values"])))
+                    elif prop == "parameters/is_quantized":
+                        return (*key, *dd.get("param_quant", [0] * len(dd["param_values"])))
                     elif prop == "parameter/value" and len(args) >= 3:
                         pi = int(args[2])
                         if pi < len(dd["param_values"]):
-                            return (*key, pi, dd["param_values"][pi])
+                            return (*key, pi, cur(pi))
                     elif prop == "parameter/value_string" and len(args) >= 3:
                         pi = int(args[2])
                         if pi < len(dd["param_values"]):
-                            return (*key, pi, str(dd["param_values"][pi]))
+                            return (*key, pi, str(cur(pi)))
             return None
 
         # View set commands — fire-and-forget with no response

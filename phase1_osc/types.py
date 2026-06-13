@@ -35,6 +35,7 @@ class ParameterInfo:
     min_value: float = 0.0
     max_value: float = 1.0
     display: str = ""
+    is_quantized: bool = False
 
 
 @dataclass
