@@ -28,6 +28,8 @@ from phase4_architect.loader import Loader
 from phase4_architect.templates import find_template, list_templates
 from phase4_architect.builder import SessionBuilder
 
+from phase6_compose import MusicalContext, build_part, lint, ROLES
+
 # ---------------------------------------------------------------------------
 # Context
 # ---------------------------------------------------------------------------
@@ -67,11 +69,27 @@ You are controlling Ableton Live through the BlessDog MCP server.
   Reverb, Compressor …) sit on tracks.
 - Each device exposes numbered **parameters** with float values.
 
+## Composing music — use compose_part, do NOT hand-write notes
+**compose_part is the primary way to create musical content.** It generates
+in-key, voice-led, groovy, humanized MIDI from intent (key, mode, scale
+degrees, register, feel), writes it reliably, and reads it back to confirm it
+landed. Hand-emitting raw note integers via clip_edit_notes produces off-key,
+stiff, flat results — only use it for surgical one-off edits.
+
+- Pick intent, not pitches: `compose_part(role="bass", track_index=3,
+  clip_index=0, key="F#", mode="minor", degrees=[1,6,4,5], bars=4)`.
+- roles: chords, bass, arp, melody, drums. Tune via `options` (e.g.
+  {"pattern": "root_octave", "rhythm": "8th"}) and `groove` (e.g.
+  {"swing": 0.15}).
+- Use `preview=True` to see notes + a lint report before writing; iterate, then
+  write. Use `verify_clip` to check what's actually in a clip.
+
 ## Common Workflows
 1. **Explore**: get_session → see tracks, scenes, tempo.
 2. **Playback**: transport_play / transport_stop / set_tempo.
-3. **Create music**: track_create_delete → clip_manage(create) →
-   clip_edit_notes(add) with a list of MidiNote dicts.
+3. **Create music**: build_session (scaffold tracks) → compose_part per track
+   (chords/bass/drums/…) → scene(fire) to audition. Keep the same key/mode/
+   degrees across parts so they lock together.
 4. **Mix**: track_set_mixer to adjust volume / pan / mute.
 5. **Arrange**: scene(fire) to trigger rows of clips.
 6. **Undo mistakes**: undo_redo("undo").
@@ -405,6 +423,132 @@ def _parse_notes(raw: list[dict]) -> list[MidiNote]:
         )
         for n in raw
     ]
+
+
+# ---------------------------------------------------------------------------
+# Composition (Phase 6) — intent-driven, theory-aware MIDI generation
+# ---------------------------------------------------------------------------
+
+def _notes_to_dicts(notes: list[MidiNote]) -> list[dict]:
+    return [
+        {"pitch": n.pitch, "start": n.start_time, "dur": n.duration, "vel": n.velocity}
+        for n in notes
+    ]
+
+
+@mcp.tool()
+@_handle_errors
+def compose_part(
+    role: str,
+    track_index: int,
+    clip_index: int,
+    key: str = "C",
+    mode: str = "minor",
+    bars: int = 4,
+    degrees: list[int] | None = None,
+    tempo: float | None = None,
+    preview: bool = False,
+    create_clip: bool = True,
+    replace: bool = True,
+    options: dict | None = None,
+    groove: dict | None = None,
+) -> str:
+    """Generate an in-key, groovy musical part and write it to a clip.
+
+    This is the PRIMARY way to create music — do not hand-emit raw notes.
+    Deterministic theory primitives produce in-key, voice-led, humanized MIDI,
+    write it reliably (chunked), and read it back to confirm it landed.
+
+    - role: one of chords | bass | arp | melody | drums
+    - key/mode: e.g. key="F#", mode="minor" (modes: major, minor, dorian,
+      phrygian, lydian, mixolydian, aeolian, harmonic_minor)
+    - degrees: scale degrees for the progression, e.g. [1, 6, 4, 5] = i-VI-iv-v.
+      (Ignored by drums.)
+    - bars: clip length in bars (4/4).
+    - preview: True returns the generated notes + lint WITHOUT writing, so you
+      can inspect/iterate cheaply before committing.
+    - options: per-role generator tuning, e.g. {"octave": 2, "pattern":
+      "root_octave", "rhythm": "8th"} for bass, or {"voices": {...}} for drums.
+    - groove: humanization overrides, e.g. {"swing": 0.15, "velocity": 14}.
+
+    Returns the lint report and a read-back verification of what actually
+    landed in Ableton.
+    """
+    if role not in ROLES:
+        return json.dumps({"error": "ValueError",
+                           "message": f"role must be one of {list(ROLES)}"})
+
+    ctx = MusicalContext(key=key, mode=mode, tempo=tempo or 120.0)
+    notes = build_part(
+        role, ctx, degrees=degrees, bars=bars, groove=groove, **(options or {}),
+    )
+    clip_length = bars * ctx.beats_per_bar
+    report = lint(notes, ctx, clip_length, check_key=(role != "drums"))
+
+    if preview:
+        return json.dumps({
+            "role": role,
+            "preview": True,
+            "key": key,
+            "mode": mode,
+            "bars": bars,
+            "clip_length": clip_length,
+            "note_count": len(notes),
+            "lint": report,
+            "notes": _notes_to_dicts(notes),
+        })
+
+    if create_clip:
+        # Harmless if the slot is already filled (server-side no-op).
+        bridge.clips.create(track_index, clip_index, clip_length)
+    if replace:
+        bridge.clips.remove_notes(track_index, clip_index, 0.0, clip_length, 0, 127)
+
+    verify = bridge.clips.add_notes_verified(track_index, clip_index, notes)
+
+    return json.dumps({
+        "role": role,
+        "track_index": track_index,
+        "clip_index": clip_index,
+        "key": key,
+        "mode": mode,
+        "bars": bars,
+        "clip_length": clip_length,
+        "lint": report,
+        "verify": verify,
+    })
+
+
+@mcp.tool()
+@_handle_errors
+def verify_clip(
+    track_index: int,
+    clip_index: int,
+    key: str | None = None,
+    mode: str = "minor",
+    clip_length: float | None = None,
+) -> str:
+    """Read a clip's notes back and report on them.
+
+    Reads the notes actually in the clip (range-correct, resilient to dense
+    clips) and returns the count. If key is provided, also lints them for
+    in-key / in-bounds correctness — useful to check anything written earlier.
+    """
+    info = bridge.clips.get_info(track_index, clip_index)
+    length = clip_length or info.length or 16.0
+    notes = bridge.clips.get_notes(track_index, clip_index, 0.0, length + 1.0, 0, 127)
+
+    result: dict = {
+        "track_index": track_index,
+        "clip_index": clip_index,
+        "clip_name": info.name,
+        "clip_length": length,
+        "note_count": len(notes),
+    }
+    if key:
+        ctx = MusicalContext(key=key, mode=mode)
+        result["lint"] = lint(notes, ctx, length + 1.0, check_key=True)
+    return json.dumps(result)
 
 
 # ---------------------------------------------------------------------------

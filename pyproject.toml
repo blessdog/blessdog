@@ -11,6 +11,8 @@ dependencies = [
     "python-osc>=1.9.0",
     "mcp>=1.0.0",
     "msgpack>=1.0.0",
+    "music21>=9.1",
+    "numpy>=1.24",
 ]
 
 [project.optional-dependencies]
@@ -28,7 +30,7 @@ dev = [
 blessdog = "phase1_osc.cli:main"
 
 [tool.setuptools.packages.find]
-include = ["phase1_osc*", "phase2_agent*", "phase3_library*", "phase4_architect*", "phase5_analyzer*"]
+include = ["phase1_osc*", "phase2_agent*", "phase3_library*", "phase4_architect*", "phase5_analyzer*", "phase6_compose*"]
 
 [tool.pytest.ini_options]
 markers = [
