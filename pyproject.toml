@@ -30,7 +30,7 @@ dev = [
 blessdog = "phase1_osc.cli:main"
 
 [tool.setuptools.packages.find]
-include = ["phase1_osc*", "phase2_agent*", "phase3_library*", "phase4_architect*", "phase5_analyzer*", "phase6_compose*"]
+include = ["phase1_osc*", "phase2_agent*", "phase3_library*", "phase4_architect*", "phase5_analyzer*", "phase6_compose*", "phase7_sound*"]
 
 [tool.pytest.ini_options]
 markers = [
