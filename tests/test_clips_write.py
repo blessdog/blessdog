@@ -11,7 +11,7 @@ from __future__ import annotations
 import pytest
 
 from phase1_osc.clips import Clips
-from phase1_osc.errors import QueryTimeout
+from phase1_osc.errors import ClipNotFound, QueryTimeout
 from phase1_osc.types import MidiNote
 
 
@@ -100,11 +100,15 @@ class _TimeoutOnWideConn:
     def __init__(self, limit: int = 64):
         self.limit = limit
         self.calls = []
+        self.has_clip_value = True
 
     def send(self, *a, **k):
         pass
 
     def query(self, address, *args, timeout=None):
+        if address == "/live/clip_slot/get/has_clip":
+            track, clip = args
+            return (track, clip, self.has_clip_value)
         track, clip, p_start, p_span, t_start, t_span = args
         self.calls.append((int(p_start), int(p_span)))
         if p_span > self.limit:
@@ -130,7 +134,31 @@ class TestChunkingAndResilience:
         assert {n.pitch for n in notes} == {0, 64}
 
     def test_get_notes_reraises_when_unsplittable(self):
-        # limit 0 forces timeout even on a 1-pitch span
+        # limit 0 forces timeout even on a 1-pitch span; the slot HAS a clip, so
+        # this is a genuine read failure, not an empty slot -> reraise QueryTimeout.
         conn = _TimeoutOnWideConn(limit=0)
+        conn.has_clip_value = True
         with pytest.raises(QueryTimeout):
             Clips(conn).get_notes(0, 0, 0.0, 8.0, 60, 60)
+
+
+# ---------------------------------------------------------------------------
+# Fail-fast on a missing/non-MIDI clip (no recursion through timeouts)
+# ---------------------------------------------------------------------------
+
+class TestFailFast:
+    def test_absent_slot_raises_clip_not_found(self, clips):
+        # Never created or written -> read should not hang/recurse; it fails fast.
+        with pytest.raises(ClipNotFound):
+            clips.get_notes(0, 9, 0.0, 8.0, 0, 127)
+
+    def test_does_not_recurse_when_no_clip(self):
+        # A timeout with no clip present must probe has_clip ONCE and raise,
+        # not split the pitch range into 5s-per-leaf timeouts.
+        conn = _TimeoutOnWideConn(limit=0)  # always times out on get/notes
+        conn.has_clip_value = False
+        c = Clips(conn)
+        with pytest.raises(ClipNotFound):
+            c.get_notes(0, 0, 0.0, 8.0, 0, 127)
+        # exactly one get/notes attempt, no recursive pitch-splitting
+        assert len(conn.calls) == 1

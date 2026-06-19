@@ -125,6 +125,9 @@ class MockAbletonOSC:
         self._client: SimpleUDPClient | None = None
         # Stateful clip note store: (track, clip) -> [(pitch, start, dur, vel, mute), ...]
         self._clip_notes: dict[tuple[int, int], list[tuple]] = {}
+        # Slots that hold a clip. A read on an absent slot times out (returns
+        # None), mirroring an empty slot / audio track in real Ableton.
+        self._clips_present: set[tuple[int, int]] = set()
         # Stateful device parameter overrides: (track, device, param) -> value
         self._param_overrides: dict[tuple[int, int, int], float] = {}
 
@@ -272,10 +275,29 @@ class MockAbletonOSC:
                 return ("loaded", last_segment)
             return ("error", "requires: category, path_segment(s)")
 
+        # Clip slot lifecycle (stateful, fire-and-forget)
+        if address == "/live/clip_slot/create_clip":
+            if len(args) >= 2:
+                self._clips_present.add((int(args[0]), int(args[1])))
+            return None
+        if address == "/live/clip_slot/delete_clip":
+            if len(args) >= 2:
+                key = (int(args[0]), int(args[1]))
+                self._clips_present.discard(key)
+                self._clip_notes.pop(key, None)
+            return None
+        if address == "/live/clip_slot/get/has_clip":
+            if len(args) >= 2:
+                key = (int(args[0]), int(args[1]))
+                present = key in self._clips_present or key in self._clip_notes
+                return (key[0], key[1], present)
+            return None
+
         # Clip note write (stateful, fire-and-forget)
         if address == "/live/clip/add/notes":
             if len(args) >= 2:
                 track, clip = int(args[0]), int(args[1])
+                self._clips_present.add((track, clip))
                 store = self._clip_notes.setdefault((track, clip), [])
                 rest = args[2:]
                 for off in range(0, len(rest) - 4, 5):
@@ -289,6 +311,9 @@ class MockAbletonOSC:
         if address == "/live/clip/get/notes":
             if len(args) >= 2:
                 track, clip = int(args[0]), int(args[1])
+                key = (track, clip)
+                if key not in self._clips_present and key not in self._clip_notes:
+                    return None  # no clip here -> real Ableton would not respond
                 notes = list(self._clip_notes.get((track, clip), []))
                 if len(args) >= 6:
                     p_start, p_span, t_start, t_span = args[2], args[3], args[4], args[5]

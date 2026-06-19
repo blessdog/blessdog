@@ -12,7 +12,7 @@ from __future__ import annotations
 from collections import Counter
 
 from .connection import AbletonOSCConnection
-from .errors import QueryTimeout
+from .errors import ClipNotFound, QueryTimeout
 from .types import ClipInfo, MidiNote
 
 # Max notes per /live/clip/add/notes message. Each note is 5 OSC args (~40-60
@@ -51,6 +51,16 @@ class Clips:
     def delete(self, track: int, clip: int) -> None:
         self._conn.send("/live/clip_slot/delete_clip", track, clip)
 
+    def has_clip(self, track: int, clip: int) -> bool:
+        """Whether a clip exists in this slot.
+
+        Cheap, scalar probe that answers fast even on an audio track or empty
+        slot (where note reads would otherwise just time out). Used to fail
+        fast instead of recursing on a missing/non-MIDI clip.
+        """
+        result = self._conn.query("/live/clip_slot/get/has_clip", track, clip)
+        return bool(list(result)[-1])
+
     # ------------------------------------------------------------------
     # Reading notes
     # ------------------------------------------------------------------
@@ -73,7 +83,10 @@ class Clips:
 
         On a dense clip the response can exceed one datagram and never arrives
         (QueryTimeout). We then split the pitch range and recurse so the read
-        still completes.
+        still completes. But a timeout also happens when there is simply no MIDI
+        clip to read (empty slot, or an audio track) — there, splitting just
+        burns ~5s per leaf for nothing, so we probe `has_clip` first and fail
+        fast with a clear error instead of recursing.
         """
         pitch_span = pitch_high - pitch_low + 1
         try:
@@ -84,8 +97,13 @@ class Clips:
                 start, length,           # time_start, time_span
             )
         except QueryTimeout:
+            if not self.has_clip(track, clip):
+                raise ClipNotFound(
+                    f"No MIDI clip at track {track}, slot {clip} "
+                    "(empty slot or audio track) — nothing to read."
+                ) from None
             if pitch_high - pitch_low <= 1:
-                raise  # can't split further — genuine failure
+                raise  # clip exists but a 1-pitch read still failed — genuine
             mid = (pitch_low + pitch_high) // 2
             return (
                 self.get_notes(track, clip, start, length, pitch_low, mid)
