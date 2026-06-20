@@ -28,6 +28,19 @@ PLAN: list[tuple[str, dict]] = [
     ("drums", {}),
 ]
 
+# Drum voice maps. The default ("house") uses a clap on the backbeat — great on
+# an electronic Drum Rack but usually silent on an acoustic kit (no clap pad).
+# "acoustic" uses a snare (GM 38), which every acoustic kit has.
+KITS: dict[str, dict | None] = {
+    "house": None,  # generator's DEFAULT_KIT
+    "acoustic": {
+        "kick": ("euclid", 4, 16),
+        "snare": ("steps", [4, 12]),
+        "closed_hat": ("euclid", 11, 16),
+        "open_hat": ("steps", [2, 6, 10, 14]),
+    },
+}
+
 
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__)
@@ -40,6 +53,8 @@ def main() -> None:
     ap.add_argument("--tempo", type=float, default=122.0)
     ap.add_argument("--no-drums", action="store_true",
                     help="skip drums (an empty Drum Rack makes no sound)")
+    ap.add_argument("--kit", choices=sorted(KITS), default="acoustic",
+                    help="drum voice map: 'acoustic' (snare) or 'house' (clap)")
     ap.add_argument("--no-fire", action="store_true", help="write but don't play")
     args = ap.parse_args()
 
@@ -70,7 +85,9 @@ def main() -> None:
     print()
 
     # 2) Compose, write (verified), per role.
-    options = {role: opts for role, opts in plan}
+    options = {role: dict(opts) for role, opts in plan}
+    if "drums" in options and KITS[args.kit] is not None:
+        options["drums"]["voices"] = KITS[args.kit]
     for s in staged:
         notes = build_part(s.role, ctx, degrees=degrees, bars=args.bars,
                            **options[s.role])

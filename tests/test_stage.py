@@ -81,6 +81,7 @@ def test_reuses_instrumented_midi_track():
     assert staged[0].track_index == 0
     assert staged[0].created_track is False
     assert staged[0].loaded_instrument is False  # reused, nothing loaded
+    assert staged[0].instrument == "Wavetable"   # reports the ACTUAL device
     assert staged[1].track_index == 1
     assert staged[1].loaded_instrument is True
 

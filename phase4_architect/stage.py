@@ -78,9 +78,12 @@ def stage_roles(
             track = midi_tracks[slot]
             created = True
 
-        instrument = inst_map.get(role, "Wavetable")
+        existing = bridge.tracks.device_names(track)
         loaded = False
-        if not bridge.tracks.device_names(track):
+        if existing:
+            instrument = existing[0]  # report what's actually on the track
+        else:
+            instrument = inst_map.get(role, "Wavetable")
             result = loader.load_device(track, instrument)
             loaded = result.success
             if result.success:
