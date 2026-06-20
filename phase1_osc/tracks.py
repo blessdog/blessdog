@@ -76,6 +76,23 @@ class Tracks:
             for i, v in enumerate(values)
         ]
 
+    def is_midi(self, index: int) -> bool:
+        """Whether a track accepts MIDI (vs. an audio track).
+
+        Reads `/live/track/get/has_midi_input` directly — the reliable
+        discriminator. (get_info doesn't fetch it, so TrackInfo.has_midi_input
+        is not trustworthy; query here instead.)
+        """
+        self._validate_index(index)
+        result = self._conn.query("/live/track/get/has_midi_input", index)
+        return bool(result[-1])
+
+    def device_names(self, index: int) -> list[str]:
+        """Names of the devices on a track (empty if none loaded)."""
+        result = list(self._conn.query("/live/track/get/devices/name", index))
+        # response is [track_index, name, name, ...]
+        return [str(x) for x in result[1:]]
+
     def create_midi_track(self, index: int = -1) -> None:
         self._conn.send("/live/song/create_midi_track", index)
 
