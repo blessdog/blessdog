@@ -12,7 +12,16 @@ See media-studio/docs/MUSIC-LANE.md for the plan this implements.
 
 from .convert import SP_RATE, SP_BITS, ConvertResult, to_sp_format, probe
 from .card import CardError, ImportTarget, find_import_folder, file_to_card
-from .ledger import Ledger, LedgerEntry
+from .ledger import (
+    BANKS,
+    PAD_BASE_NOTE,
+    Ledger,
+    LedgerEntry,
+    hash_file,
+    normalize_pad,
+    note_to_pad,
+    pad_to_note,
+)
 
 # NOTE: nothing here may be named `convert`, `card`, `ledger` or `build` — a
 # package-level export with a submodule's name shadows the module itself, so
@@ -30,4 +39,10 @@ __all__ = [
     "file_to_card",
     "Ledger",
     "LedgerEntry",
+    "hash_file",
+    "normalize_pad",
+    "pad_to_note",
+    "note_to_pad",
+    "PAD_BASE_NOTE",
+    "BANKS",
 ]

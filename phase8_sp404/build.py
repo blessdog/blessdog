@@ -19,7 +19,7 @@ from dataclasses import dataclass, field
 
 from .card import CardError, ImportTarget, file_to_card
 from .convert import ConvertResult, sp_safe_name, to_sp_format
-from .ledger import Ledger, LedgerEntry, hash_file
+from .ledger import Ledger, LedgerEntry, hash_file, normalize_pad
 
 _LIBRARY_ROOT = os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
@@ -80,15 +80,31 @@ def stage_file(
     key: str = "",
     normalize: bool = False,
     mono: bool = False,
+    source_clip_hash: str = "",
+    source_in_secs: float | None = None,
+    pad: str = "",
 ) -> StageResult:
     """Convert one local audio file into the SP library and record it.
 
     Deduplicates on the SOURCE file's content hash — converting the same source
     twice is recognised rather than producing a second near-identical sample.
+
+    `source_clip_hash`/`source_in_secs`/`pad` carry the clip-lane pointer (see
+    CLIP-LANE.md §7): which video this came from, where inside it, and which
+    device pad it sits on. All optional — the sampling lane never needs them.
     """
     source_path = os.path.abspath(source_path)
     if not os.path.isfile(source_path):
         return StageResult(success=False, error=f"source missing: {source_path}")
+
+    # Validate the pad BEFORE converting — LedgerEntry would reject it anyway,
+    # but raising after an ffmpeg pass wastes the work and breaks this
+    # function's contract of failing softly so batches can carry on.
+    if pad:
+        try:
+            pad = normalize_pad(pad)
+        except ValueError as exc:
+            return StageResult(success=False, error=str(exc))
 
     library: Ledger = ledger if ledger is not None else Ledger()
 
@@ -131,6 +147,9 @@ def stage_file(
         derived_from=derived_from,
         local_path=dest,
         bank=bank,
+        source_clip_hash=source_clip_hash,
+        source_in_secs=source_in_secs,
+        pad=pad,
     )
     library.add(entry)
     return StageResult(success=True, entry=entry)

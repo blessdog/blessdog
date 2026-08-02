@@ -15,7 +15,17 @@ from phase8_sp404.convert import (
     check_length,
     sp_safe_name,
 )
-from phase8_sp404.ledger import Ledger, LedgerEntry, hash_file
+from phase8_sp404.ledger import (
+    BANKS,
+    PAD_BASE_NOTE,
+    PADS_PER_BANK,
+    Ledger,
+    LedgerEntry,
+    hash_file,
+    normalize_pad,
+    note_to_pad,
+    pad_to_note,
+)
 
 ffmpeg_required = pytest.mark.skipif(
     not convert.is_available(), reason="ffmpeg/ffprobe not on PATH"
@@ -221,6 +231,122 @@ def test_push_to_card_records_destination(tone, tmp_path, monkeypatch):
     assert not batch.failed and len(batch.staged) == 1
     assert os.path.isfile(staged.entry.card_path)
     assert Ledger(str(tmp_path / "led.json")).entries[0].card_path
+
+
+# ------------------------------------------------- clip lane (CLIP-LANE §7)
+
+@pytest.mark.parametrize("raw,expected", [
+    ("a5", "A5"), ("A5", "A5"), (" j16 ", "J16"), ("A1", "A1"), ("A16", "A16"),
+])
+def test_normalize_pad_accepts_valid(raw, expected):
+    assert normalize_pad(raw) == expected
+
+
+@pytest.mark.parametrize("bad", ["A0", "A17", "K1", "5A", "", "A", "1", "AA1"])
+def test_normalize_pad_rejects_invalid(bad):
+    with pytest.raises(ValueError):
+        normalize_pad(bad)
+
+
+def test_pad_note_roundtrip_across_a_bank():
+    for index in range(1, PADS_PER_BANK + 1):
+        pad = f"C{index}"
+        assert note_to_pad(pad_to_note(pad), bank="C") == pad
+
+
+def test_pad_one_is_base_note():
+    assert pad_to_note("A1") == PAD_BASE_NOTE
+    assert pad_to_note("A16") == PAD_BASE_NOTE + PADS_PER_BANK - 1
+
+
+def test_note_to_pad_needs_a_bank_and_validates_it():
+    assert note_to_pad(PAD_BASE_NOTE, bank="B") == "B1"
+    with pytest.raises(ValueError):
+        note_to_pad(PAD_BASE_NOTE, bank="Z")
+
+
+def test_note_to_pad_rejects_out_of_range():
+    with pytest.raises(ValueError):
+        note_to_pad(PAD_BASE_NOTE - 1)
+    with pytest.raises(ValueError):
+        note_to_pad(PAD_BASE_NOTE + PADS_PER_BANK)
+
+
+def test_every_bank_letter_is_accepted():
+    for bank in BANKS:
+        assert normalize_pad(f"{bank}1") == f"{bank}1"
+
+
+def test_entry_normalises_pad_on_construction():
+    assert LedgerEntry(source_hash="h", name="n", kind="loop", pad="b7").pad == "B7"
+
+
+def test_entry_rejects_bad_pad_and_negative_in_point():
+    with pytest.raises(ValueError):
+        LedgerEntry(source_hash="h", name="n", kind="loop", pad="Z9")
+    with pytest.raises(ValueError):
+        LedgerEntry(source_hash="h", name="n", kind="loop", source_in_secs=-0.5)
+
+
+def test_clip_fields_survive_ledger_roundtrip(tmp_path):
+    path = str(tmp_path / "led.json")
+    ledger = Ledger(path)
+    ledger.add(LedgerEntry(source_hash="h1", name="stab", kind="oneshot",
+                           source_clip_hash="clipA", source_in_secs=2.1, pad="A5"))
+
+    back = Ledger(path).entries[0]
+    assert back.source_clip_hash == "clipA"
+    assert back.source_in_secs == 2.1
+    assert back.pad == "A5"
+
+
+def test_from_clip_returns_in_point_order(tmp_path):
+    ledger = Ledger(str(tmp_path / "led.json"))
+    for name, at in [("c", 5.0), ("a", 1.0), ("b", 3.0)]:
+        ledger.add(LedgerEntry(source_hash=name, name=name, kind="oneshot",
+                               source_clip_hash="clipA", source_in_secs=at))
+    ledger.add(LedgerEntry(source_hash="other", name="other", kind="oneshot",
+                           source_clip_hash="clipB", source_in_secs=0.5))
+
+    assert [e.name for e in ledger.from_clip("clipA")] == ["a", "b", "c"]
+    assert [e.name for e in ledger.from_clip("clipB")] == ["other"]
+    assert ledger.from_clip("nope") == []
+
+
+def test_by_pad_returns_latest_assignment(tmp_path):
+    ledger = Ledger(str(tmp_path / "led.json"))
+    ledger.add(LedgerEntry(source_hash="1", name="old", kind="loop", pad="A5"))
+    ledger.add(LedgerEntry(source_hash="2", name="new", kind="loop", pad="A5"))
+
+    assert ledger.by_pad("a5").name == "new"     # re-recording a pad replaces it
+    assert ledger.by_pad("A6") is None
+
+
+@ffmpeg_required
+def test_stage_file_carries_clip_pointer(tone, tmp_path, monkeypatch):
+    monkeypatch.setattr(build, "_LIBRARY_ROOT", str(tmp_path / "lib"))
+    ledger = Ledger(str(tmp_path / "led.json"))
+
+    result = build.stage_file(tone, kind="oneshot", ledger=ledger,
+                              source_clip_hash="clipA", source_in_secs=2.1,
+                              pad="a5")
+    assert result.success, result.error
+    assert result.entry.source_clip_hash == "clipA"
+    assert result.entry.source_in_secs == 2.1
+    assert result.entry.pad == "A5"
+
+
+@ffmpeg_required
+def test_stage_file_rejects_bad_pad_without_converting(tone, tmp_path, monkeypatch):
+    """Must fail SOFT and BEFORE ffmpeg runs — batches carry on, work isn't wasted."""
+    lib = tmp_path / "lib"
+    monkeypatch.setattr(build, "_LIBRARY_ROOT", str(lib))
+    ledger = Ledger(str(tmp_path / "led.json"))
+
+    result = build.stage_file(tone, ledger=ledger, pad="Z9")
+    assert not result.success and "invalid pad" in result.error
+    assert len(ledger) == 0
+    assert not lib.exists()          # nothing was converted
 
 
 def test_push_reports_missing_staged_file(tmp_path):
