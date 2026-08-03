@@ -90,6 +90,9 @@ def cmd_add(args) -> int:
         artist=artist,
         normalize=args.normalize,
         mono=args.mono,
+        analyze=args.analyze,
+        bpm=args.bpm,
+        key=args.key,
     )
     if not outcome.success:
         print(f"failed: {outcome.error}", file=sys.stderr)
@@ -196,6 +199,13 @@ def build_parser() -> argparse.ArgumentParser:
                      help="EBU R128 loudness normalise (off by default — it "
                           "flattens one-shot transients)")
     add.add_argument("--mono", action="store_true", help="downmix to mono")
+    add.add_argument("--analyze", action="store_true",
+                     help="detect BPM + key and record them (adds a few "
+                          "seconds; worth it for tracks and loops, pointless "
+                          "for one-shots)")
+    add.add_argument("--bpm", type=float, default=None,
+                     help="KNOWN tempo — always beats --analyze's estimate")
+    add.add_argument("--key", default="", help="known key, e.g. Am")
     add.set_defaults(func=cmd_add)
 
     stems = sub.add_parser("stems", help="Demucs-separate a file and stage its stems")

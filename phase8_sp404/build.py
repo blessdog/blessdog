@@ -28,6 +28,48 @@ _LIBRARY_ROOT = os.path.join(
 )
 
 
+# Below this, a key estimate is noise rather than a reading. Sits between the
+# measured 0.287 of a drums stem and the 0.606 of a full mix.
+_KEY_MIN_CONF = 0.45
+
+
+def detect_tempo_key(audio_path, max_secs=120.0):
+    """Estimate (bpm, key) for a file. Returns (None, "") if unavailable.
+
+    Reuses phase5_analyzer's existing estimators rather than reimplementing
+    them — they work on raw samples, so no Demucs pass is needed and this stays
+    cheap enough to run on every add.
+
+    A DJ library without tempo is barely a DJ library (MUSIC-LANE decision 3),
+    and the first real run proved nothing was populating these fields: the unit
+    tests passed only because they set bpm/key explicitly by hand.
+
+    Only the first `max_secs` are analysed. A 10-minute track does not need
+    full decoding to yield its tempo, and dance music does not change key
+    halfway through. Never raises — metadata is a nice-to-have, and failing to
+    read it must not block a sample from entering the library.
+    """
+    try:
+        import librosa
+        from phase5_analyzer.stems import _estimate_key, _estimate_tempo
+
+        y, sr = librosa.load(str(audio_path), mono=True, duration=max_secs)
+        if not len(y):
+            return None, ""
+        bpm, _ = _estimate_tempo(y, sr)
+        root, mode, conf = _estimate_key(librosa.effects.harmonic(y), sr)
+        # Percussion has no tonal centre, so a drum stem still yields a
+        # confident-looking answer that is pure noise — measured: a real drums
+        # stem returned "D#m" at conf 0.287, against 0.606 for a full mix and
+        # 0.683 for a vocal stem. Recording that as fact would poison
+        # harmonic-mixing decisions later, so report no key rather than a wrong
+        # one. Pass --key to override when you actually know it.
+        key = f"{root}{mode[0] if mode else ''}" if conf >= _KEY_MIN_CONF else ""
+        return round(float(bpm), 1), key
+    except Exception:
+        return None, ""
+
+
 @dataclass
 class StageResult:
     success: bool
@@ -83,6 +125,7 @@ def stage_file(
     source_clip_hash: str = "",
     source_in_secs: float | None = None,
     pad: str = "",
+    analyze: bool = False,
 ) -> StageResult:
     """Convert one local audio file into the SP library and record it.
 
@@ -132,6 +175,14 @@ def stage_file(
     )
     if not result.success:
         return StageResult(success=False, error=result.error)
+
+    # Analyse the CONVERTED file, so bpm/key describe what actually sits on the
+    # pad. Explicit values win — a tempo you read off the SP or Ableton beats
+    # any estimate (see media-studio beat-grid --bpm).
+    if analyze and (bpm is None or not key):
+        detected_bpm, detected_key = detect_tempo_key(result.file_path)
+        bpm = bpm if bpm is not None else detected_bpm
+        key = key or detected_key
 
     entry = LedgerEntry(
         source_hash=source_hash,

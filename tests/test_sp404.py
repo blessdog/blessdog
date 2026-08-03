@@ -349,6 +349,45 @@ def test_stage_file_rejects_bad_pad_without_converting(tone, tmp_path, monkeypat
     assert not lib.exists()          # nothing was converted
 
 
+# --------------------------------------------------- tempo / key detection
+
+def test_detect_tempo_key_never_raises_on_bad_input(tmp_path):
+    """Metadata is a nice-to-have; failing to read it must not block a sample."""
+    assert build.detect_tempo_key(str(tmp_path / "nope.wav")) == (None, "")
+    junk = tmp_path / "junk.wav"
+    junk.write_bytes(b"not audio at all")
+    assert build.detect_tempo_key(str(junk)) == (None, "")
+
+
+@ffmpeg_required
+def test_stage_file_leaves_bpm_unset_without_analyze(tone, tmp_path, monkeypatch):
+    """The real-run gap: nothing populated bpm/key until --analyze existed."""
+    monkeypatch.setattr(build, "_LIBRARY_ROOT", str(tmp_path / "lib"))
+    ledger = Ledger(str(tmp_path / "led.json"))
+    r = build.stage_file(tone, ledger=ledger)          # analyze defaults False
+    assert r.entry.bpm is None and r.entry.key == ""
+
+
+@ffmpeg_required
+def test_explicit_bpm_key_beat_detection(tone, tmp_path, monkeypatch):
+    """A tempo read off the SP or Ableton must win over any estimate."""
+    monkeypatch.setattr(build, "_LIBRARY_ROOT", str(tmp_path / "lib"))
+    monkeypatch.setattr(build, "detect_tempo_key", lambda *a, **k: (99.9, "Zz"))
+    ledger = Ledger(str(tmp_path / "led.json"))
+    r = build.stage_file(tone, ledger=ledger, analyze=True, bpm=174.0, key="Am")
+    assert r.entry.bpm == 174.0 and r.entry.key == "Am"
+
+
+@ffmpeg_required
+def test_analyze_fills_only_missing_fields(tone, tmp_path, monkeypatch):
+    monkeypatch.setattr(build, "_LIBRARY_ROOT", str(tmp_path / "lib"))
+    monkeypatch.setattr(build, "detect_tempo_key", lambda *a, **k: (120.0, "Cm"))
+    ledger = Ledger(str(tmp_path / "led.json"))
+    r = build.stage_file(tone, ledger=ledger, analyze=True, bpm=174.0)
+    assert r.entry.bpm == 174.0      # explicit kept
+    assert r.entry.key == "Cm"       # missing one filled
+
+
 def test_push_reports_missing_staged_file(tmp_path):
     ledger = Ledger(str(tmp_path / "led.json"))
     entry = LedgerEntry(source_hash="h", name="ghost", kind="loop",
