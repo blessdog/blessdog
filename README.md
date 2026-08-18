@@ -1,25 +1,32 @@
-## Hey, I'm Ryan
+I build pipelines that turn raw recordings into finished media:
+phone-call tapes into animated films, screen captures into illustrated
+videos, a 14th-century Chinese scroll into a camera move. The
+machinery is Node CLIs, FFmpeg, ComfyUI on rented GPUs, and a linter
+that runs before any money gets spent.
 
-AI product builder based in Denver, CO. I build autonomous AI systems that do real work.
+![My dog, before and after restyle-image](images/readme/dog-restyle.jpg)
 
-### What I'm Building
+The repos here are written as build logs. What was tried, what died,
+and why it died — the failures are documented on purpose, because
+they're the useful part.
 
-**[Write-On](https://write-on.app)** — Shipped talk-to-text app for macOS. Push-to-talk voice transcription with real-time Deepgram Nova-3 streaming and 3D waveform visualization. Companion iOS app (YapZapp) with Metal GPU shaders and keyboard extension. [GitHub](https://github.com/blessdog/write-on)
+Where to start:
 
-**[TortWin](https://github.com/blessdog/chronology_mvp)** — Medical chronology automation for personal injury attorneys. Cuts 4-hour paralegal work to 48 minutes. HIPAA-compliant OCR (AWS Textract), NLP extraction (BioClinicalBERT), React dashboard, FastAPI backend.
+- **[media-tools](https://github.com/blessdog/media-tools)** — the
+  toolbox. One CLI per media capability; every other project composes
+  these.
+- **[freqsource](https://github.com/blessdog/freqsource)** — surfaces
+  what AI practitioners are actually hitting, not what press releases
+  say. Live at [freqsource.com](https://freqsource.com).
+- **[blessdog](https://github.com/blessdog/blessdog)** — MCP servers
+  that drive Ableton Live. Shares my name because it was here first.
+- **[obs-control-room](https://github.com/blessdog/obs-control-room)** —
+  Stream Deck → OBS rig, cold-start scripted.
+- **[yapzap](https://github.com/blessdog/yapzap)** — voice recorder in,
+  transcripts and ideas out.
+- **[bible](https://github.com/blessdog/bible)** — the rules I hold my
+  own architecture to.
 
-**[BlessDog](https://github.com/blessdog/blessdog)** — AI music production system. Dual MCP servers that let AI agents control Ableton Live through natural language. 40+ tool endpoints, 5-phase architecture: OSC bridge, MCP tools, sample library, session templates, reference track analysis.
-
-**[JobHard](https://jobhard.com)** — AI-powered job application service. OpenClaw agent searches, scores, and applies to jobs autonomously. Next.js dashboard for tracking applications and responses.
-
-**[Your Claude Engineer](https://github.com/blessdog/your-claude-engineer)** — Multi-agent orchestration framework. Autonomous software engineer with specialized sub-agents for Linear project management, GitHub commits, Slack notifications, and Playwright browser testing.
-
-**[Prompt Shark](https://github.com/blessdog/com.promptshark)** — Live SaaS platform for PI law firms. AI-generated SEO content pipeline using Claude API + n8n automation with automated publishing.
-
-### Tech
-
-Python, TypeScript, Swift, Rust · Claude API/SDK, MCP Protocol, OpenClaw · FastAPI, React, Node.js · AWS, Docker · Deepgram, Metal, Ableton Live
-
-### Links
-
-[write-on.app](https://write-on.app) · [jobhard.com](https://jobhard.com) · [LinkedIn](https://linkedin.com/in/ryan-anselman) · Denver, CO
+Closed for now: a self-contained speech-to-text app for Mac
+([write-on.app](https://write-on.app), for sale soon) and a robot that
+applies to jobs.
